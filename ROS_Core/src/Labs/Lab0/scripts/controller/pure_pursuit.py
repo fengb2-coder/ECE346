@@ -76,7 +76,7 @@ class PurePursuitController():
         #   - subscribes to the topic <self.control_topic>
         #   - has message type <ServoMsg> (racecar_msgs.msg.Odometry) 
         #   - with queue size 1
-        self.control_pub = None # TO BE FILLED
+        self.control_pub =  rospy.Publisher('self.control_topic', ServoMsg, queue_size = 1)  # TO BE FILLED
         ########################### END OF TODO 1#################################
         
             
@@ -93,6 +93,8 @@ class PurePursuitController():
         #   - has message type <Odometry> (nav_msgs.msg.Odometry) 
         #   - with callback function <self.odometry_callback>, which has already been implemented
         #   - with queue size 1
+
+        self.odom_sub = rospy.Subscriber('self.odom_topic', Odometry, self.odometry_callback, queue_size=1)
         ########################### END OF TODO 2#################################
         
     def odometry_callback(self, odom_msg: Odometry):
@@ -123,8 +125,11 @@ class PurePursuitController():
         #   and create a 3-dim numpy array [x,y,1]
         # 3. add the goal to the buffer (self.goal_buffer)
         
-        goal_x = np.nan # TO BE FILLED
-        goal_y = np.nan # TO BE FILLED
+        goal_x = goal_msg.pose.position.x # TO BE FILLED
+        goal_y = goal_msg.pose.position.y # TO BE FILLED
+
+        goal_array = np.array([goal_x, goal_y, 1])
+        self.goal_buffer.writeFromNonRT(goal_array)
         
         ########################### END OF TODO 3 #################################
         # Log the goal to the console using "rospy.loginfo"
@@ -154,6 +159,14 @@ class PurePursuitController():
         # 2. Set the header time to the current time
         # 3. Set the throttle and steering angle to the servo message
         # 4. Publish the servo message
+
+        msg = ServoMsg()
+        msg.header.stamp  = rospy.get_rostime()
+        msg.throttle, msg.steer = throttle, steer
+
+        self.control_pub.publish(msg)
+
+
         
         ########################### END OF TODO 4 #################################
 
@@ -205,9 +218,36 @@ class PurePursuitController():
                     #
                     # 5. clip the steering angle between "-self.steer_max" and "self.steer_max"
                     # 6. apply the simple proportional controller for the acceleration to track the reference_velocity
+
+                    if dis2goal <= e-6:
+
+                        accel = -1
+                        steer = 0
+
+                    elif goal_robot[0] < 0:
+
+                        v_rel = self.max_vel
+                        steer = self.max_steer
+                        error = state_cur.v - v_rel 
+                        kp = 0.4 ## need to be tuned later
+                        accel = kp*error
+
+                    else:
+                        l_d = np.min(self.ld_max, dis2goal)
+                        v_rel = np.min(self.max_vel, (dis2goal-self.stop_distance))
+                        
+                        steer = np.arctan(2*self.wheel_base*np.sin(alpha)/l_d)
+                        steer = np.clip(steer, -self.max_steer, self.max_steer)
                     
-                    accel = 0 # TO BE FILLED 
-                    steer = 0 # TO BE FILLED
+                        error = state_cur.v - v_rel
+                        
+                        kp = 0.4 ## need to be tuned later
+                        accel = kp*error
+
+
+                    
+                    # accel = 0 # TO BE FILLED 
+                    # steer = 0 # TO BE FILLED
                     ########################### END OF TODO 5 ###########################################
                     
                     # publish the control
